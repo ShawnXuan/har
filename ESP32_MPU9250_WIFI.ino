@@ -24,6 +24,7 @@
  */
 
 #include "MPU9250.h"
+#include "esp_wpa2.h"
 
 #define AHRS true         // Set to false for basic data read
 #define SerialDebug false  // Set to true to get Serial output for debugging
@@ -33,27 +34,19 @@ int intPin = 12;  // These can be changed, 2 and 3 are the Arduinos ext int pins
 int myLed  = 13;  // Set up pin 13 led for toggling
 
 MPU9250 myIMU;
+//static IPAddress remoteIp = IPAddress();
+static uint16_t remotePort = 4210;
 
-#include <WiFi.h>       // use for ESP32
+const char* ssid = "phone.wlan.bjtu"; // your ssid
+#define EAP_ID "8120" //"youruserid"
+#define EAP_USERNAME "8120" //"youruserid"
+#define EAP_PASSWORD "p7s0v5" //"yourpassword"
 
-#define sendInterval 100
-
-//const char* ssid = "TP-LINK_B979AC";
-//const char* password = "wjl13146792866";
-const char* ssid = "NETGEAR26";
-const char* password = "zanywater094";
-//const char* ssid = "ShawnX";
-//const char* password = "86753099";
-// 0831 WiFiUDP Udp;
-
-unsigned int localUdpPort = 4210;  // local port to listen on
-char incomingPacket[256];  // buffer for incoming packets
-WiFiServer server(localUdpPort); // 0831
+WiFiServer server(remotePort); // 0831
 
 hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 bool time_arrive = false;
-int f = 0;
 void IRAM_ATTR onTimer(){
   time_arrive = true;
 }
@@ -68,13 +61,33 @@ void init_timer(){
 
   // Set alarm to call onTimer function every second (value in microseconds).
   // Repeat the alarm (third parameter)
-  //timerAlarmWrite(timer, 10000, true);//10000-100Hz-10ms
-  timerAlarmWrite(timer, 1000000, true);//1000000-1Hz-1000ms
+  timerAlarmWrite(timer, 10000, true);//10000-100Hz-10ms
 
   // Start an alarm
   timerAlarmEnable(timer);
 }
+void WifiWPA2Init(){
+    // WPA2 enterprise magic starts here
+    WiFi.disconnect(true);      
+    esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EAP_ID, strlen(EAP_ID));
+    esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EAP_USERNAME, strlen(EAP_USERNAME));
+    esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EAP_PASSWORD, strlen(EAP_PASSWORD));
+    esp_wifi_sta_wpa2_ent_enable();
+    // WPA2 enterprise magic ends here
 
+
+    WiFi.begin(ssid);
+
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());  
+}
 void setup()
 {
   Wire.begin(21, 22, 400000);
@@ -85,19 +98,7 @@ void setup()
   Serial.println();
   Serial.printf("Connecting to %s ", ssid);
     
-  // delete old config
-  WiFi.disconnect(true);
-    
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED){
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");// 0831 
-  Serial.println("WiFi connected.");// 0831 
-  Serial.println("IP address: ");// 0831 
-  Serial.println(WiFi.localIP());// 0831 
-  server.begin();// 0831
+  WifiWPA2Init();
    
   // Set up the interrupt pin, its set as active high, push-pull
   pinMode(intPin, INPUT);
@@ -172,29 +173,24 @@ void setup()
   }
   init_timer();
 }
-void TimerArrive(){
-  f++;    
-  if(time_arrive){  
-    Serial.println(f);
-    f = 0;
-    time_arrive = false;
-  }
-}
+
 void loop()
 {
-  myIMU.update(SerialDebug);
-  TimerArrive();
-  
+  if(time_arrive){
+    myIMU.update(true);
+    time_arrive = false;
+  }
   WiFiClient client = server.available(); 
   if (client) {                     // if you get a client,
+    myIMU.package_num = 0;
     Serial.println("New Client."); // print a message out the serial port
     String currentLine = "";        // make a String to hold incoming data from the client
     while (client.connected()) {    // loop while the client's connected
-      //if(time_arrive){
+      if(time_arrive){
         myIMU.update(SerialDebug);
-        myIMU.SendUDPMessage(client);
-        TimerArrive();
-      //}
+        myIMU.fill_buf(client);
+        time_arrive = false;
+      }
     }
   }
 }

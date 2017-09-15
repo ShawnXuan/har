@@ -67,12 +67,36 @@ void MPU9250::update(bool SerialDebug){
   } // if (delt_t > 50)
 }
 String payload;
-typedef union packet
-{
-    float f;
-    char c[4];
-} packet;
-#define FLOATNUM 9//20
+bool MPU9250::fill_buf(WiFiClient client){
+    //float buf[BUFFER_SIZE];
+    //int package_num = 0;  
+  int i = 1;
+  //buf[package_num*FLOATNUM+i] = (float)package_num;  i++;  
+  buf[package_num*FLOATNUM+i] = ax;  i++;
+  buf[package_num*FLOATNUM+i] = ay;  i++;
+  buf[package_num*FLOATNUM+i] = az;  i++;
+  buf[package_num*FLOATNUM+i] = gx;  i++;
+  buf[package_num*FLOATNUM+i] = gy;  i++;
+  buf[package_num*FLOATNUM+i] = gz;  i++;
+  buf[package_num*FLOATNUM+i] = mx;  i++;
+  buf[package_num*FLOATNUM+i] = my;  i++;
+  buf[package_num*FLOATNUM+i] = mz;  i++;
+  package_num++;
+  if(package_num == SAMPLES_PER_PACKAGE)  {
+    payload = "";
+    serialPayloadFloatArr(buf, BUFFER_SIZE);
+    payload += "\r\n";  
+    int payloadLen = payload.length();
+    byte message[payloadLen];  
+    //message[payloadLen-1] = package_id;
+    payload.getBytes(message,payloadLen);
+    client.write(message,sizeof(message));    
+    package_num = 0;
+    package_id ++;
+    buf[0] = package_id;
+  }
+}
+    
 //#define MESSAGESIZE 40 //80
 //byte messageF[MESSAGESIZE];//
 void MPU9250::SendUDPMessage(WiFiClient client){
@@ -119,19 +143,7 @@ void MPU9250::SendUDPMessage(WiFiClient client){
   int payloadLen = payload.length();
   byte message[payloadLen];  
   payload.getBytes(message,payloadLen);
-  int delt_t;
-  delt_t = millis();
-  int res = client.write(message,sizeof(message));
-  delt_t = millis() - delt_t;
-  if(delt_t>1){
-    Serial.print("client.write time: ");
-    Serial.println(delt_t);
-  }
-  if(res==0){
-    Serial.print(res);
-    Serial.println("Send message fail!");
-  }
-    
+  client.write(message,sizeof(message));
   //Serial.print("send a package to "); 
   //Serial.println(Udp.remoteIP());
 
@@ -166,15 +178,6 @@ void MPU9250::serialPayloadPrint(float f) {
         payload += (c2);
     }
 }
-/*void MPU9250::serialPayloadFloatArr(float * arr, int length) {
-  byte * b;
-  for(int i=0; i<length; i++) {
-    b = (byte *) &arr[i];
-    for(int j=0; j<4; j++) {
-      messageF[i*4+j]=b[j];
-    }
-  }
-}*/
 
 void MPU9250::serialPayloadFloatArr(float * arr, int length) {
     for(int i=0; i<length; i++) {

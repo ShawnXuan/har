@@ -182,6 +182,10 @@
 #endif // AD0
 #include <WiFi.h>       // use for ESP32
 
+#define SAMPLES_PER_PACKAGE 10
+#define FLOATNUM 9//20
+#define BUFFER_SIZE 91
+
 class MPU9250
 {
   protected:
@@ -218,6 +222,11 @@ class MPU9250
     Adafruit_BMP280 bme; 
     int bme_count = 0;
     float bmeTemperature, bmePressure, bmeAltitude;
+    float buf[BUFFER_SIZE];
+    int package_num = 0;
+    bool fill_buf(WiFiClient client);
+    byte package_id = 0;
+    
     float pitch, yaw, roll;
     float temperature;   // Stores the real internal chip temperature in Celsius
     int16_t tempCount;   // Temperature raw count output
