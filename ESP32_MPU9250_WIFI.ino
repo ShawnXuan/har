@@ -35,6 +35,7 @@ int myLed  = 13;  // Set up pin 13 led for toggling
 MPU9250 myIMU;
 
 #include <WiFi.h>       // use for ESP32
+#include <WiFiUdp.h>
 
 #define sendInterval 100
 
@@ -44,16 +45,16 @@ const char* ssid = "NETGEAR26";
 const char* password = "zanywater094";
 //const char* ssid = "ShawnX";
 //const char* password = "86753099";
-// 0831 WiFiUDP Udp;
+WiFiUDP Udp;
+static IPAddress remoteIp = IPAddress();
+static uint16_t remotePort = 4210;
 
 unsigned int localUdpPort = 4210;  // local port to listen on
 char incomingPacket[256];  // buffer for incoming packets
-WiFiServer server(localUdpPort); // 0831
 
 hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 bool time_arrive = false;
-int f = 0;
 void IRAM_ATTR onTimer(){
   time_arrive = true;
 }
@@ -68,8 +69,7 @@ void init_timer(){
 
   // Set alarm to call onTimer function every second (value in microseconds).
   // Repeat the alarm (third parameter)
-  //timerAlarmWrite(timer, 10000, true);//10000-100Hz-10ms
-  timerAlarmWrite(timer, 1000000, true);//1000000-1Hz-1000ms
+  timerAlarmWrite(timer, 10000, true);//10000-100Hz-10ms
 
   // Start an alarm
   timerAlarmEnable(timer);
@@ -93,12 +93,11 @@ void setup()
     delay(500);
     Serial.print(".");
   }
-  Serial.println("");// 0831 
-  Serial.println("WiFi connected.");// 0831 
-  Serial.println("IP address: ");// 0831 
-  Serial.println(WiFi.localIP());// 0831 
-  server.begin();// 0831
-   
+  Serial.println(" connected");
+  Udp.begin(localUdpPort);
+  Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), localUdpPort);
+  WiFi.localIP().toString().c_str(), localUdpPort;
+    
   // Set up the interrupt pin, its set as active high, push-pull
   pinMode(intPin, INPUT);
   digitalWrite(intPin, LOW);
@@ -172,29 +171,50 @@ void setup()
   }
   init_timer();
 }
-void TimerArrive(){
-  f++;    
-  if(time_arrive){  
-    Serial.println(f);
-    f = 0;
-    time_arrive = false;
-  }
-}
+
 void loop()
 {
-  myIMU.update(SerialDebug);
-  TimerArrive();
-  
-  WiFiClient client = server.available(); 
-  if (client) {                     // if you get a client,
-    Serial.println("New Client."); // print a message out the serial port
-    String currentLine = "";        // make a String to hold incoming data from the client
-    while (client.connected()) {    // loop while the client's connected
-      //if(time_arrive){
-        myIMU.update(SerialDebug);
-        myIMU.SendUDPMessage(client);
-        TimerArrive();
-      //}
+  String cmd;
+  int packetSize = Udp.parsePacket();
+  if (packetSize)
+  {
+    // receive incoming UDP packets
+    remoteIp = Udp.remoteIP();
+    remotePort = Udp.remotePort();
+    Serial.printf("Received %d bytes from %s, port %d\n", packetSize, remoteIp.toString().c_str(), remotePort);
+    int len = Udp.read(incomingPacket, 255);
+    incomingPacket[len] = 0;
+    Serial.printf("UDP packet contents: %s\n", incomingPacket);
+        
+    cmd = incomingPacket[0];
+    if(cmd=="s") {
+      Serial.print("Hit s to continue...");
+      Serial.print('\n');
+    }
+    else if(cmd=="x"){
+      WiFi.disconnect(true);
+      Serial.println("Disconnected");
     }
   }
+  if(!remotePort){
+    //nobody have connected yet
+    return;
+  }    
+  if(time_arrive){
+    myIMU.update(SerialDebug);
+    time_arrive = false;
+  }
+  //myIMU.update(SerialDebug);
+  /*
+  Serial.print("Temperature = ");
+  Serial.print(bme.readTemperature());
+  Serial.println(" *C");
+    
+  Serial.print("Pressure = ");
+  Serial.print(bme.readPressure());
+  Serial.println(" Pa");
+
+  Serial.print("Approx altitude = ");
+  Serial.print(bme.readAltitude(1013.25)); // this should be adjusted to your local forcase
+  Serial.println(" m");*/
 }

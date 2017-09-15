@@ -1,6 +1,8 @@
 #include "MPU9250.h"
 #include "quaternionFilters.h"
-
+//#include <WiFi.h>       // use for ESP32
+#include <WiFiUdp.h>
+extern WiFiUDP Udp;
 //extern static float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 void MPU9250::update(bool SerialDebug){
   updateData();
@@ -26,6 +28,7 @@ void MPU9250::update(bool SerialDebug){
   //delt_t = millis() - count;
   //if (delt_t > 5)
   {
+    SendUDPMessage();
     if(SerialDebug)
     {
       // Print acceleration values in milligs!
@@ -73,9 +76,9 @@ typedef union packet
     char c[4];
 } packet;
 #define FLOATNUM 9//20
-//#define MESSAGESIZE 40 //80
-//byte messageF[MESSAGESIZE];//
-void MPU9250::SendUDPMessage(WiFiClient client){
+#define MESSAGESIZE 40 //80
+byte messageF[MESSAGESIZE];//
+void MPU9250::SendUDPMessage(){
   tempCount = readTempData();  // Read the adc values
   // Temperature in degrees Centigrade
   temperature = ((float) tempCount) / 333.87 + 21.0;//degrees C
@@ -119,21 +122,13 @@ void MPU9250::SendUDPMessage(WiFiClient client){
   int payloadLen = payload.length();
   byte message[payloadLen];  
   payload.getBytes(message,payloadLen);
-  int delt_t;
-  delt_t = millis();
-  int res = client.write(message,sizeof(message));
-  delt_t = millis() - delt_t;
-  if(delt_t>1){
-    Serial.print("client.write time: ");
-    Serial.println(delt_t);
-  }
-  if(res==0){
-    Serial.print(res);
-    Serial.println("Send message fail!");
-  }
-    
-  //Serial.print("send a package to "); 
-  //Serial.println(Udp.remoteIP());
+  //Serial.print(payload);
+  Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+  Udp.write(message,sizeof(message));
+  //Udp.write(messageF,80);
+  Udp.endPacket();
+  Serial.print("send a package to "); 
+  Serial.println(Udp.remoteIP());
 
 //      yaw   = atan2(2.0f * (*(getQ()+1) * *(getQ()+2) + *getQ() *
 //                    *(getQ()+3)), *getQ() * *getQ() + *(getQ()+1) * *(getQ()+1)

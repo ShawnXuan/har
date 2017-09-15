@@ -180,7 +180,6 @@
 #define MPU9250_ADDRESS 0x68  // Device address when ADO = 0
 #define AK8963_ADDRESS  0x0C   // Address of magnetometer
 #endif // AD0
-#include <WiFi.h>       // use for ESP32
 
 class MPU9250
 {
@@ -254,7 +253,7 @@ class MPU9250
     void updateTime();
     void updateData();
     void updataBMPData();
-    void SendUDPMessage(WiFiClient client);
+    void SendUDPMessage();
     void initAK8963(float *);
     void initMPU9250();
     void calibrateMPU9250(float * gyroBias, float * accelBias);
