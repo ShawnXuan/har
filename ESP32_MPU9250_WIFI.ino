@@ -53,7 +53,6 @@ WiFiServer server(localUdpPort); // 0831
 hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 bool time_arrive = false;
-int f = 0;
 void IRAM_ATTR onTimer(){
   time_arrive = true;
 }
@@ -68,8 +67,7 @@ void init_timer(){
 
   // Set alarm to call onTimer function every second (value in microseconds).
   // Repeat the alarm (third parameter)
-  //timerAlarmWrite(timer, 10000, true);//10000-100Hz-10ms
-  timerAlarmWrite(timer, 1000000, true);//1000000-1Hz-1000ms
+  timerAlarmWrite(timer, 10000, true);//10000-100Hz-10ms
 
   // Start an alarm
   timerAlarmEnable(timer);
@@ -172,29 +170,23 @@ void setup()
   }
   init_timer();
 }
-void TimerArrive(){
-  f++;    
-  if(time_arrive){  
-    Serial.println(f);
-    f = 0;
-    time_arrive = false;
-  }
-}
+
 void loop()
 {
-  myIMU.update(SerialDebug);
-  TimerArrive();
-  
+  if(time_arrive){
+    myIMU.update(SerialDebug);
+    time_arrive = false;
+  }
   WiFiClient client = server.available(); 
   if (client) {                     // if you get a client,
     Serial.println("New Client."); // print a message out the serial port
     String currentLine = "";        // make a String to hold incoming data from the client
     while (client.connected()) {    // loop while the client's connected
-      //if(time_arrive){
+      if(time_arrive){
         myIMU.update(SerialDebug);
         myIMU.SendUDPMessage(client);
-        TimerArrive();
-      //}
+        time_arrive = false;
+      }
     }
   }
 }

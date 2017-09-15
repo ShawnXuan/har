@@ -119,18 +119,10 @@ void MPU9250::SendUDPMessage(WiFiClient client){
   int payloadLen = payload.length();
   byte message[payloadLen];  
   payload.getBytes(message,payloadLen);
-  int delt_t;
-  delt_t = millis();
   int res = client.write(message,sizeof(message));
-  delt_t = millis() - delt_t;
-  if(delt_t>1){
-    Serial.print("client.write time: ");
-    Serial.println(delt_t);
-  }
-  if(res==0){
+  //if(res==0)
     Serial.print(res);
     Serial.println("Send message fail!");
-  }
     
   //Serial.print("send a package to "); 
   //Serial.println(Udp.remoteIP());
