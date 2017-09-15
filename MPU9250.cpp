@@ -1,6 +1,8 @@
 #include "MPU9250.h"
 #include "quaternionFilters.h"
-
+//#include <WiFi.h>       // use for ESP32
+#include <WiFiUdp.h>
+extern WiFiUDP Udp;
 //extern static float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 void MPU9250::update(bool SerialDebug){
   updateData();
@@ -23,9 +25,10 @@ void MPU9250::update(bool SerialDebug){
                          mx, mz, deltat);
 
 
-  //delt_t = millis() - count;
-  //if (delt_t > 5)
+  delt_t = millis() - count;
+  if (delt_t > 5)
   {
+    SendUDPMessage();
     if(SerialDebug)
     {
       // Print acceleration values in milligs!
@@ -61,7 +64,7 @@ void MPU9250::update(bool SerialDebug){
       Serial.print("Temperature is ");  Serial.print(temperature, 1);
       Serial.println(" degrees C");
     }
-    //count = millis();
+    count = millis();
     sumCount = 0;
     sum = 0;
   } // if (delt_t > 50)
@@ -72,25 +75,14 @@ typedef union packet
     float f;
     char c[4];
 } packet;
-#define FLOATNUM 9//20
-//#define MESSAGESIZE 40 //80
-//byte messageF[MESSAGESIZE];//
-void MPU9250::SendUDPMessage(WiFiClient client){
+byte messageF[80];
+
+void MPU9250::SendUDPMessage(){
   tempCount = readTempData();  // Read the adc values
   // Temperature in degrees Centigrade
   temperature = ((float) tempCount) / 333.87 + 21.0;//degrees C
+  float val_array[20];
   
-  float val_array[FLOATNUM];
-  val_array[0] = (ax);//g
-  val_array[1] = (ay);//g
-  val_array[2] = (az);//g
-  val_array[3] = (gx);//degrees/sec;
-  val_array[4] = (gy);// * M_PI/180);
-  val_array[5] = (gz);// * M_PI/180);
-  val_array[6] = (mx);//mG
-  val_array[7] = (my);//mG
-  val_array[9] = (mz);//mG
-  /*  
   val_array[0] = (*getQ());
   val_array[1] = (*(getQ()+1));
   val_array[2] = (*(getQ()+2));
@@ -111,29 +103,19 @@ void MPU9250::SendUDPMessage(WiFiClient client){
   val_array[17] = bmeTemperature;//bme.readTemperature();//bmp280 temperature
   val_array[18] = bmePressure;//bme.readPressure();//(float)sumCount/sum;        
   val_array[19] = bmeAltitude;//bme.readAltitude(1013.25);//altitude;
-*/
+
   payload = "";
-  serialPayloadFloatArr(val_array, FLOATNUM);
+  serialPayloadFloatArr(val_array, 20);
   payload += "\r\n";
 
   int payloadLen = payload.length();
   byte message[payloadLen];  
   payload.getBytes(message,payloadLen);
-  int delt_t;
-  delt_t = millis();
-  int res = client.write(message,sizeof(message));
-  delt_t = millis() - delt_t;
-  if(delt_t>1){
-    Serial.print("client.write time: ");
-    Serial.println(delt_t);
-  }
-  if(res==0){
-    Serial.print(res);
-    Serial.println("Send message fail!");
-  }
-    
-  //Serial.print("send a package to "); 
-  //Serial.println(Udp.remoteIP());
+  //Serial.print(payload);
+  Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+  Udp.write(message,sizeof(message));
+  //Udp.write(messageF,80);
+  Udp.endPacket();
 
 //      yaw   = atan2(2.0f * (*(getQ()+1) * *(getQ()+2) + *getQ() *
 //                    *(getQ()+3)), *getQ() * *getQ() + *(getQ()+1) * *(getQ()+1)
