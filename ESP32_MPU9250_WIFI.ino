@@ -24,6 +24,7 @@
  */
 
 #include "MPU9250.h"
+#include "SD_IO.h"
 
 #define AHRS true         // Set to false for basic data read
 #define SerialDebug false  // Set to true to get Serial output for debugging
@@ -33,8 +34,10 @@ int intPin = 12;  // These can be changed, 2 and 3 are the Arduinos ext int pins
 int myLed  = 13;  // Set up pin 13 led for toggling
 
 MPU9250 myIMU;
+SD_IO mySD;
 
 #include <WiFi.h>       // use for ESP32
+#include <WiFiUdp.h>
 
 #define sendInterval 100
 
@@ -44,11 +47,11 @@ const char* ssid = "NETGEAR26";
 const char* password = "zanywater094";
 //const char* ssid = "ShawnX";
 //const char* password = "86753099";
-// 0831 WiFiUDP Udp;
-
+WiFiUDP Udp;
+static IPAddress remoteIp = IPAddress();
+static uint16_t remotePort = 4210;
 unsigned int localUdpPort = 4210;  // local port to listen on
 char incomingPacket[256];  // buffer for incoming packets
-WiFiServer server(localUdpPort); // 0831
 
 hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -68,19 +71,14 @@ void init_timer(){
 
   // Set alarm to call onTimer function every second (value in microseconds).
   // Repeat the alarm (third parameter)
-  //timerAlarmWrite(timer, 10000, true);//10000-100Hz-10ms
-  timerAlarmWrite(timer, 1000000, true);//1000000-1Hz-1000ms
+  timerAlarmWrite(timer, 10000, true);//10000-100Hz-10ms
+  //timerAlarmWrite(timer, 1000000, true);//1000000-1Hz-1000ms
 
   // Start an alarm
   timerAlarmEnable(timer);
 }
 
-void setup()
-{
-  Wire.begin(21, 22, 400000);
-  // TWBR = 12;  // 400 kbit/sec I2C speed
-  Serial.begin(115200);
-  
+void init_wifi(){
   //Setup wifi and udp connection
   Serial.println();
   Serial.printf("Connecting to %s ", ssid);
@@ -93,108 +91,105 @@ void setup()
     delay(500);
     Serial.print(".");
   }
-  Serial.println("");// 0831 
-  Serial.println("WiFi connected.");// 0831 
-  Serial.println("IP address: ");// 0831 
-  Serial.println(WiFi.localIP());// 0831 
-  server.begin();// 0831
-   
+  
+  Serial.println(" connected");
+  Udp.begin(localUdpPort);
+  Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), localUdpPort);
+  WiFi.localIP().toString().c_str(), localUdpPort; 
+}
+void setup()
+{
+  Wire.begin(21, 22, 400000);
+  // TWBR = 12;  // 400 kbit/sec I2C speed
+  Serial.begin(115200);
+
+  mySD.Init();
+  init_wifi();
+  
   // Set up the interrupt pin, its set as active high, push-pull
   pinMode(intPin, INPUT);
   digitalWrite(intPin, LOW);
   pinMode(myLed, OUTPUT);
   digitalWrite(myLed, HIGH);
-
-  // Read the WHO_AM_I register, this is a good test of communication
-  byte c = myIMU.readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
-  Serial.print("MPU9250 "); Serial.print("I AM "); Serial.print(c, HEX);
-  Serial.print(" I should be 0x73 or"); Serial.println(0x71, HEX);
-
-  if (c == 0x71 or c == 0x73) // WHO_AM_I should always be 0x68
-  {
-    Serial.println("MPU9250 is online...");
-
-    // Start by performing self test and reporting values
-    myIMU.MPU9250SelfTest(myIMU.SelfTest);
-    Serial.print("x-axis self test: acceleration trim within : ");
-    Serial.print(myIMU.SelfTest[0],1); Serial.println("% of factory value");
-    Serial.print("y-axis self test: acceleration trim within : ");
-    Serial.print(myIMU.SelfTest[1],1); Serial.println("% of factory value");
-    Serial.print("z-axis self test: acceleration trim within : ");
-    Serial.print(myIMU.SelfTest[2],1); Serial.println("% of factory value");
-    Serial.print("x-axis self test: gyration trim within : ");
-    Serial.print(myIMU.SelfTest[3],1); Serial.println("% of factory value");
-    Serial.print("y-axis self test: gyration trim within : ");
-    Serial.print(myIMU.SelfTest[4],1); Serial.println("% of factory value");
-    Serial.print("z-axis self test: gyration trim within : ");
-    Serial.print(myIMU.SelfTest[5],1); Serial.println("% of factory value");
-
-    // Calibrate gyro and accelerometers, load biases in bias registers
-    myIMU.calibrateMPU9250(myIMU.gyroBias, myIMU.accelBias);
-
-    myIMU.initMPU9250();
-    // Initialize device for active mode read of acclerometer, gyroscope, and
-    // temperature
-    Serial.println("MPU9250 initialized for active data mode....");
-
-    // Read the WHO_AM_I register of the magnetometer, this is a good test of
-    // communication
-    byte d = myIMU.readByte(AK8963_ADDRESS, WHO_AM_I_AK8963);
-    Serial.print("AK8963 "); Serial.print("I AM "); Serial.print(d, HEX);
-    Serial.print(" I should be "); Serial.println(0x48, HEX);
-
-    // Get magnetometer calibration from AK8963 ROM
-    myIMU.initAK8963(myIMU.magCalibration);
-    // Initialize device for active mode read of magnetometer
-    Serial.println("AK8963 initialized for active data mode....");
-    if (SerialDebug)
-    {
-      //  Serial.println("Calibration values: ");
-      Serial.print("X-Axis sensitivity adjustment value ");
-      Serial.println(myIMU.magCalibration[0], 2);
-      Serial.print("Y-Axis sensitivity adjustment value ");
-      Serial.println(myIMU.magCalibration[1], 2);
-      Serial.print("Z-Axis sensitivity adjustment value ");
-      Serial.println(myIMU.magCalibration[2], 2);
-    }
-  } // if (c == 0x71)
-  else
-  {
-    Serial.print("Could not connect to MPU9250: 0x");
-    Serial.println(c, HEX);
-    while(1) ; // Loop forever if communication doesn't happen
-  }
-
-  Serial.println(F("BMP280 test"));
-  if (!myIMU.bme.begin()) {  
-    Serial.println("Could not find a valid BMP280 sensor, check wiring!");
-    while (1);
-  }
+  myIMU.Init();
   init_timer();
 }
-void TimerArrive(){
-  f++;    
-  if(time_arrive){  
-    Serial.println(f);
-    f = 0;
-    time_arrive = false;
-  }
+
+bool isRecording = false;
+String filename;
+char filepath[40];
+
+void filename2path(String fn){
+  String path;
+  path = "/" + fn + ".csvv";
+  path.toCharArray(filepath, path.length());
+  //filepath[path.length()] = 0;
 }
+Packet_u pack;
+int wifi_delay = 0;
+int time_syn = 0;
 void loop()
 {
   myIMU.update(SerialDebug);
-  TimerArrive();
-  
-  WiFiClient client = server.available(); 
-  if (client) {                     // if you get a client,
-    Serial.println("New Client."); // print a message out the serial port
-    String currentLine = "";        // make a String to hold incoming data from the client
-    while (client.connected()) {    // loop while the client's connected
-      //if(time_arrive){
-        myIMU.update(SerialDebug);
-        myIMU.SendUDPMessage(client);
-        TimerArrive();
-      //}
+  if(isRecording && time_arrive){
+    myIMU.FillMessage(&pack, wifi_delay);
+    mySD.write(pack.buf, sizeof(sensorData_t));
+    time_arrive = false;
+    time_syn++;
+    if (time_syn==100){
+      time_syn = 0;
+      int delt_t;
+      delt_t = millis();
+      Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+      Udp.write(pack.buf, sizeof(sensorData_t));
+      Udp.endPacket();    
+      wifi_delay = millis() - delt_t; 
+    } else
+      wifi_delay = 0;
+    //Serial.printf("time %d\n", pack.sensor.time_);
+  }
+  int packetSize = Udp.parsePacket();
+  if (packetSize){
+      // receive incoming UDP packets
+    remoteIp = Udp.remoteIP();
+    remotePort = Udp.remotePort();
+    //Serial.printf("Received %d bytes from %s, port %d\n", packetSize, remoteIp.toString().c_str(), remotePort);
+    int len = Udp.read(incomingPacket, 255);
+    incomingPacket[len] = 0;
+    //Serial.printf("UDP packet contents: %s\n", incomingPacket);
+    String cmd((char*) incomingPacket);
+    //Serial.printf("length %d ,", cmd.length());
+    //Serial.println(cmd);
+    //Serial.println(cmd.substring(0,6));
+    //Serial.println(cmd.substring(6));
+    if (cmd.substring(0, 6) == "Start:"){
+      Serial.println("Start to record:");
+      filename = cmd.substring(6);
+      filename2path(filename);
+      mySD.openFile(SD, filepath);
+      isRecording = true;           
+    } else if (cmd.substring(0, 5) == "Stop:") {
+      if (isRecording) {
+        mySD.closeFile();
+        isRecording = false;
+        Serial.println("End record.");
+      } else {
+        Serial.println("wrong Stop command!");
+      }
+    } else if (cmd.substring(0, 6) == "Abort:") {
+      if (isRecording) {
+        mySD.closeFile();
+        isRecording = false;
+        Serial.println("Cancel record");
+        if (filename == cmd.substring(6))
+          mySD.deleteFile(SD, filepath);  
+        else
+          Serial.println("filename is not match!");
+      } else {
+        Serial.println("wrong Abort command!");
+      }
     }
+    else
+      Serial.printf("receieved a wrong command: %s\n", incomingPacket);
   }
 }

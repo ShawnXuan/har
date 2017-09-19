@@ -181,6 +181,16 @@
 #define AK8963_ADDRESS  0x0C   // Address of magnetometer
 #endif // AD0
 #include <WiFi.h>       // use for ESP32
+typedef struct sensorData_t{
+  int time_;
+  int last_delay;
+  float val_array[20];
+};
+
+typedef union Packet_u{
+  sensorData_t sensor;
+  byte buf[sizeof(sensorData_t)];
+};
 
 class MPU9250
 {
@@ -243,6 +253,7 @@ class MPU9250
     int16_t accelCount[3];
     
   public:
+    void FillMessage(Packet_u* pack, int wifi_delay);
     void getMres();
     void getGres();
     void getAres();
@@ -257,6 +268,7 @@ class MPU9250
     void SendUDPMessage(WiFiClient client);
     void initAK8963(float *);
     void initMPU9250();
+    void Init();
     void calibrateMPU9250(float * gyroBias, float * accelBias);
     void MPU9250SelfTest(float * destination);
     void writeByte(uint8_t, uint8_t, uint8_t);

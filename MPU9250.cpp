@@ -67,11 +67,31 @@ void MPU9250::update(bool SerialDebug){
   } // if (delt_t > 50)
 }
 String payload;
-typedef union packet
-{
-    float f;
-    char c[4];
-} packet;
+void  MPU9250::FillMessage(Packet_u* pack, int wifi_delay){
+  pack->sensor.time_ = millis();
+  pack->sensor.last_delay = wifi_delay;
+  
+  pack->sensor.val_array[0] = (*getQ());
+  pack->sensor.val_array[1] = (*(getQ()+1));
+  pack->sensor.val_array[2] = (*(getQ()+2));
+  pack->sensor.val_array[3] = (*(getQ()+3));
+  pack->sensor.val_array[4] = (ax);//g
+  pack->sensor.val_array[5] = (ay);//g
+  pack->sensor.val_array[6] = (az);//g
+  pack->sensor.val_array[7] = (gx);//degrees/sec;
+  pack->sensor.val_array[8] = (gy);// * M_PI/180);
+  pack->sensor.val_array[9] = (gz);// * M_PI/180);
+  pack->sensor.val_array[10] = (mx);//mG
+  pack->sensor.val_array[11] = (my);//mG
+  pack->sensor.val_array[12] = (mz);//mG
+  pack->sensor.val_array[13] = yaw;
+  pack->sensor.val_array[14] = pitch;
+  pack->sensor.val_array[15] = roll;
+  pack->sensor.val_array[16] = temperature;//(9.*(float) temperature/5. + 32., 2);
+  pack->sensor.val_array[17] = bmeTemperature;//bme.readTemperature();//bmp280 temperature
+  pack->sensor.val_array[18] = bmePressure;//bme.readPressure();//(float)sumCount/sum;        
+  pack->sensor.val_array[19] = bmeAltitude;//bme.readAltitude(1013.25);//altitude;
+}
 #define FLOATNUM 9//20
 //#define MESSAGESIZE 40 //80
 //byte messageF[MESSAGESIZE];//
@@ -385,6 +405,74 @@ void MPU9250::initAK8963(float * destination)
   // and enable continuous mode data acquisition Mmode (bits [3:0]), 0010 for 8 Hz and 0110 for 100 Hz sample rates
   writeByte(AK8963_ADDRESS, AK8963_CNTL, Mscale << 4 | Mmode); // Set magnetometer data resolution and sample ODR
   delay(10);
+}
+
+void MPU9250::Init(){
+    // Read the WHO_AM_I register, this is a good test of communication
+  byte c = readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
+  Serial.print("MPU9250 "); Serial.print("I AM "); Serial.print(c, HEX);
+  Serial.print(" I should be 0x73 or"); Serial.println(0x71, HEX);
+
+  if (c == 0x71 or c == 0x73) // WHO_AM_I should always be 0x68
+  {
+    Serial.println("MPU9250 is online...");
+
+    // Start by performing self test and reporting values
+    MPU9250SelfTest(SelfTest);
+    Serial.print("x-axis self test: acceleration trim within : ");
+    Serial.print(SelfTest[0],1); Serial.println("% of factory value");
+    Serial.print("y-axis self test: acceleration trim within : ");
+    Serial.print(SelfTest[1],1); Serial.println("% of factory value");
+    Serial.print("z-axis self test: acceleration trim within : ");
+    Serial.print(SelfTest[2],1); Serial.println("% of factory value");
+    Serial.print("x-axis self test: gyration trim within : ");
+    Serial.print(SelfTest[3],1); Serial.println("% of factory value");
+    Serial.print("y-axis self test: gyration trim within : ");
+    Serial.print(SelfTest[4],1); Serial.println("% of factory value");
+    Serial.print("z-axis self test: gyration trim within : ");
+    Serial.print(SelfTest[5],1); Serial.println("% of factory value");
+
+    // Calibrate gyro and accelerometers, load biases in bias registers
+    calibrateMPU9250(gyroBias, accelBias);
+
+    initMPU9250();
+    // Initialize device for active mode read of acclerometer, gyroscope, and
+    // temperature
+    Serial.println("MPU9250 initialized for active data mode....");
+
+    // Read the WHO_AM_I register of the magnetometer, this is a good test of
+    // communication
+    byte d = readByte(AK8963_ADDRESS, WHO_AM_I_AK8963);
+    Serial.print("AK8963 "); Serial.print("I AM "); Serial.print(d, HEX);
+    Serial.print(" I should be "); Serial.println(0x48, HEX);
+
+    // Get magnetometer calibration from AK8963 ROM
+    initAK8963(magCalibration);
+    // Initialize device for active mode read of magnetometer
+    Serial.println("AK8963 initialized for active data mode....");
+    //if (SerialDebug)
+    {
+      //  Serial.println("Calibration values: ");
+      Serial.print("X-Axis sensitivity adjustment value ");
+      Serial.println(magCalibration[0], 2);
+      Serial.print("Y-Axis sensitivity adjustment value ");
+      Serial.println(magCalibration[1], 2);
+      Serial.print("Z-Axis sensitivity adjustment value ");
+      Serial.println(magCalibration[2], 2);
+    }
+  } // if (c == 0x71)
+  else
+  {
+    Serial.print("Could not connect to MPU9250: 0x");
+    Serial.println(c, HEX);
+    while(1) ; // Loop forever if communication doesn't happen
+  }
+
+  Serial.println(F("BMP280 test"));
+  if (!bme.begin()) {  
+    Serial.println("Could not find a valid BMP280 sensor, check wiring!");
+    while (1);
+  }
 }
 
 void MPU9250::initMPU9250()
